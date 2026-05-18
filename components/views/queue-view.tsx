@@ -20,13 +20,14 @@ export function QueueView() {
         >
           Reception Panel
         </Button>
-        <Button 
-          variant="ghost" 
-          onClick={() => window.open("/tv", "_blank")}
-          className="w-full gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+        <a 
+          href="/tv" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring h-9 px-4 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
         >
           TV Display <ExternalLink className="w-4 h-4" />
-        </Button>
+        </a>
       </div>
 
       {activeTab === "reception" && (
