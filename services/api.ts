@@ -45,6 +45,7 @@ export const ClinicAPI = {
     createVisit: (data: any) => api.post("/clinic/visits/", data),
     updateVisit: (id: string, data: any) => api.patch(`/clinic/visits/${id}/`, data),
     completeVisit: (id: string, data: any) => api.post(`/clinic/visits/${id}/complete/`, data),
+    markAnnounced: (id: string) => api.post(`/clinic/visits/${id}/mark_announced/`),
 
     // Receipt
     downloadVisitReceipt: (id: string) =>

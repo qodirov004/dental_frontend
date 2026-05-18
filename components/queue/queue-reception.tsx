@@ -20,6 +20,7 @@ export function QueueReception() {
   const [selectedVisitId, setSelectedVisitId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewMode] = useState<'active' | 'completed'>('active')
+  const [announcedIds, setAnnouncedIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     fetchQueue()
@@ -32,7 +33,33 @@ export function QueueReception() {
     setLoading(true)
     try {
       const res = await ClinicAPI.getVisits()
-      setQueue(Array.isArray(res.data) ? res.data : [])
+      const queueList = Array.isArray(res.data) ? res.data : []
+      setQueue(queueList)
+
+      // Auto-play announcement for newly CALLED, unannounced patients (only on Admin panel)
+      const unannounced = queueList.find(
+        (q: any) => q.status === "CALLED" && !q.is_announced
+      )
+
+      if (unannounced && !announcedIds.has(unannounced.id)) {
+        setAnnouncedIds((prev) => {
+          const next = new Set(prev)
+          next.add(unannounced.id)
+          return next
+        })
+
+        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ')
+        setTimeout(() => {
+          playAnnouncementWithDing(
+            `Hurmatli bemor! Navbat raqami ${unannounced.queue_number}. Marhamat, ${doctorName ? `doktor ${doctorName}` : 'shifokor'} xonasiga kiring.`
+          )
+        }, 500)
+
+        // Mark as announced on the backend
+        ClinicAPI.markAnnounced(unannounced.id.toString()).catch((err) => {
+          console.error("Failed to mark announced:", err)
+        })
+      }
     } catch (e) {
       console.error("Queue fetch error:", e)
     } finally {
@@ -54,14 +81,6 @@ export function QueueReception() {
       await ClinicAPI.updateVisit(id.toString(), data)
       fetchQueue()
       toast.success("Navbat yangilandi")
-
-      if (data.status === 'CALLED') {
-        const item = queue.find(q => q.id === id)
-        if (item) {
-          const doctorName = [item.veterinarian_first_name, item.veterinarian_last_name].filter(Boolean).join(' ')
-          playAnnouncementWithDing(`Hurmatli bemor! Navbat raqami ${item.queue_number}. Marhamat, ${doctorName ? `doktor ${doctorName}` : 'shifokor'} xonasiga kiring.`)
-        }
-      }
     } catch (e) {
       toast.error("Statusni o'zgartirishda xatolik")
     }

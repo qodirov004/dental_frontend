@@ -65,19 +65,12 @@ export function CompleteVisitDialog(props: CompleteVisitDialogProps) {
 
             toast.success("Qabul yakunlandi va mijozga Telegram orqali yuborildi")
 
-            // Auto-call next patient voice announcement
+            // Auto-call next patient toast notification (audio played only on Admin/TV screens)
             if (completeRes.data?.next_called) {
                 const next = completeRes.data.next_called
-                const nextDoctorName = [next.veterinarian_first_name, next.veterinarian_last_name].filter(Boolean).join(' ')
                 toast.info(`Keyingi bemor chaqirildi: ${next.queue_number} - ${next.pet_name}`, {
                     duration: 6000,
                 })
-                // Play voice announcement for next patient
-                setTimeout(() => {
-                    playAnnouncementWithDing(
-                        `Hurmatli bemor! Navbat raqami ${next.queue_number}. Marhamat, ${nextDoctorName ? `doktor ${nextDoctorName}` : 'shifokor'} xonasiga kiring.`
-                    )
-                }, 1000)
             }
 
             // Show preview

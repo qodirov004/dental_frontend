@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react"
 import { ClinicAPI } from "@/services/api"
+import { playAnnouncementWithDing } from "@/lib/tts"
 
 export function QueueTVDisplay() {
   const [currentItem, setCurrentItem] = useState<any | null>(null)
   const [nextItems, setNextItems] = useState<any[]>([])
   const [time, setTime] = useState<string>("")
+  const [announcedIds, setAnnouncedIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     fetchQueue()
@@ -32,6 +34,31 @@ export function QueueTVDisplay() {
 
       setCurrentItem(called || null)
       setNextItems(waiting) // Show all waiting items
+
+      // Auto-play announcement for newly CALLED, unannounced patients (only on TV Display/Admin panel)
+      const unannounced = queue.find(
+        (q: any) => q.status === "CALLED" && !q.is_announced
+      )
+
+      if (unannounced && !announcedIds.has(unannounced.id)) {
+        setAnnouncedIds((prev) => {
+          const next = new Set(prev)
+          next.add(unannounced.id)
+          return next
+        })
+
+        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ')
+        setTimeout(() => {
+          playAnnouncementWithDing(
+            `Hurmatli bemor! Navbat raqami ${unannounced.queue_number}. Marhamat, ${doctorName ? `doktor ${doctorName}` : 'shifokor'} xonasiga kiring.`
+          )
+        }, 500)
+
+        // Mark as announced on the backend
+        ClinicAPI.markAnnounced(unannounced.id.toString()).catch((err) => {
+          console.error("Failed to mark announced on TV Display:", err)
+        })
+      }
     } catch (e) {
       console.error(e)
     }
