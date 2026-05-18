@@ -110,9 +110,11 @@ const splitTextIntoChunks = (text: string, maxLen = 200): string[] => {
     return chunks;
 };
 
+const API_BASE = "https://dental.api.ardentsoft.uz/api";
+
 /**
- * Play audio using Google Translate TTS directly.
- * Using Audio element to stream high-quality neural Uzbek voice.
+ * Play audio using high-quality backend TTS proxy endpoint.
+ * The backend proxies requests to deliver professional neural voices without CORS restrictions.
  */
 const playGoogleTTS = async (text: string): Promise<boolean> => {
     try {
@@ -120,7 +122,7 @@ const playGoogleTTS = async (text: string): Promise<boolean> => {
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = encodeURIComponent(chunks[i]);
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=uz&client=tw-ob&q=${chunk}`;
+            const url = `${API_BASE}/clinic/tts/?text=${chunk}`;
 
             await new Promise<void>((resolve, reject) => {
                 // Stop any currently playing audio
