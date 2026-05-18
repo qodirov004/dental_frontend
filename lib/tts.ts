@@ -42,6 +42,12 @@ const numberToUzbekWords = (n: number): string => {
     return result.trim();
 };
 
+const uzSpelling: { [key: string]: string } = {
+    'A': 'A', 'B': 'Be', 'C': 'Se', 'D': 'De', 'E': 'E', 'F': 'Ef', 'G': 'Ge', 'H': 'Ha',
+    'I': 'I', 'J': 'Je', 'K': 'Ka', 'L': 'El', 'M': 'Em', 'N': 'En', 'O': 'O', 'P': 'Pe',
+    'Q': 'Qa', 'R': 'Er', 'S': 'Es', 'T': 'Te', 'U': 'U', 'V': 'Ve', 'X': 'Xa', 'Y': 'Ye', 'Z': 'Ze'
+};
+
 /**
  * Process text to make it more natural for TTS:
  * - Convert queue numbers (A001) to spoken words
@@ -57,8 +63,8 @@ const preprocessText = (text: string): string => {
         const letter = queueMatch[1] || "";
         const num = parseInt(queueMatch[2], 10);
         const numWords = numberToUzbekWords(num);
-        // Spell out the letter naturally
-        const letterSpoken = letter ? `${letter}, ` : "";
+        // Spell out the letter naturally in Uzbek
+        const letterSpoken = letter ? `${uzSpelling[letter.toUpperCase()] || letter}, ` : "";
         processed = processed.replace(
             /raqami\s+[A-Z]?\d+/i,
             `raqami ${letterSpoken}${numWords}`
@@ -105,19 +111,16 @@ const splitTextIntoChunks = (text: string, maxLen = 200): string[] => {
 };
 
 /**
- * Play audio using backend TTS proxy endpoint.
- * The backend proxies to Google Translate TTS to bypass CORS restrictions.
- * This provides much more natural Uzbek pronunciation.
+ * Play audio using Google Translate TTS directly.
+ * Using Audio element to stream high-quality neural Uzbek voice.
  */
-const API_BASE = "https://dental.api.ardentsoft.uz/api";
-
 const playGoogleTTS = async (text: string): Promise<boolean> => {
     try {
         const chunks = splitTextIntoChunks(text);
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = encodeURIComponent(chunks[i]);
-            const url = `${API_BASE}/clinic/tts/?text=${chunk}`;
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=uz&client=tw-ob&q=${chunk}`;
 
             await new Promise<void>((resolve, reject) => {
                 // Stop any currently playing audio
@@ -129,16 +132,14 @@ const playGoogleTTS = async (text: string): Promise<boolean> => {
                 const audio = new Audio(url);
                 currentAudio = audio;
                 audio.volume = 1.0;
-                // Don't change playbackRate - Edge TTS already handles speed
-                // Changing playbackRate distorts audio quality
 
                 audio.onended = () => {
                     currentAudio = null;
                     resolve();
                 };
-                audio.onerror = () => {
+                audio.onerror = (err) => {
                     currentAudio = null;
-                    reject(new Error("Audio playback failed"));
+                    reject(err);
                 };
 
                 audio.play().catch(reject);
