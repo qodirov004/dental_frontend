@@ -111,18 +111,18 @@ const splitTextIntoChunks = (text: string, maxLen = 200): string[] => {
 };
 
 const getApiBase = (): string => {
-    if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+    if (typeof window === "undefined") return "https://dental.api.ardentsoft.uz/api";
     const { protocol, hostname, port } = window.location;
     let resolvedHost = hostname;
     if (hostname === "localhost") {
         resolvedHost = "127.0.0.1";
     }
-    
+
     // If in local development or local network, point to Django port 8000
     if (port === "3000" || port === "3001" || port === "3002" || resolvedHost === "127.0.0.1" || /^192\.168\./.test(resolvedHost)) {
         return `${protocol}//${resolvedHost}:8000/api`;
     }
-    
+
     // Production/Staging fallback: use current domain/port
     return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}/api`;
 };
@@ -291,7 +291,7 @@ export const playUzbekVoice = async (text: string): Promise<void> => {
     if (window.speechSynthesis) {
         const voices = window.speechSynthesis.getVoices();
         const madinaVoice = voices.find(v => v.name.toLowerCase().includes('madina'));
-        
+
         if (madinaVoice) {
             console.log("Found native Microsoft Madina (HD) voice. Using for local synthesis:", madinaVoice.name);
             playBrowserTTS(processedText);

@@ -5,7 +5,7 @@ import { ClinicAPI } from "@/services/api"
 import { playAnnouncementWithDing } from "@/lib/tts"
 
 const getApiBase = (): string => {
-  if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+  if (typeof window === "undefined") return "https://dental.api.ardentsoft.uz/api";
   const { protocol, hostname, port } = window.location;
   let resolvedHost = hostname;
   if (hostname === "localhost") {
@@ -39,7 +39,7 @@ export function QueueTVDisplay() {
         source.connect(ctx.destination);
         source.start(0);
       }
-      
+
       // Play a short silent buffer to unlock HTML5 Audio
       const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
       audio.play().then(() => {
@@ -57,7 +57,7 @@ export function QueueTVDisplay() {
 
   useEffect(() => {
     fetchQueue()
-    
+
     // Polling fallback (less aggressive when SSE is active)
     const interval = setInterval(fetchQueue, 15000)
 
@@ -71,7 +71,7 @@ export function QueueTVDisplay() {
       try {
         const apiBase = getApiBase()
         eventSource = new EventSource(`${apiBase}/clinic/visits/events/`)
-        
+
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
@@ -154,7 +154,7 @@ export function QueueTVDisplay() {
 
   if (!isAudioUnlocked) {
     return (
-      <div 
+      <div
         onClick={unlockAudio}
         className="fixed inset-0 z-50 bg-[#0f172a] text-white flex flex-col items-center justify-center p-8 font-sans cursor-pointer overflow-hidden"
       >
@@ -231,24 +231,24 @@ export function QueueTVDisplay() {
                   <p className="text-8xl font-black text-white uppercase tracking-tight truncate px-4">
                     {currentItem.pet_name}
                   </p>
-                  
+
                   <div className="flex items-center justify-center gap-6">
                     <div className="h-[2px] w-16 bg-blue-400/50"></div>
                     <p className="text-4xl font-bold text-blue-100">{currentItem.customer_name}</p>
                     <div className="h-[2px] w-16 bg-blue-400/50"></div>
                   </div>
-                  
+
                   {(currentItem.veterinarian_first_name || currentItem.veterinarian_name) && (
                     <div className="mt-8 bg-white/10 py-6 px-12 rounded-[2.5rem] inline-flex items-center gap-6 border border-white/20 shadow-2xl backdrop-blur-xl">
-                       <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-4xl shadow-lg border-2 border-white/20">👨‍⚕️</div>
-                       <div className="text-left">
-                         <p className="text-lg font-bold text-blue-300 uppercase tracking-widest leading-none mb-1">Qabul qiluvchi shifokor:</p>
-                         <p className="text-5xl font-black text-white">
-                           {currentItem.veterinarian_first_name 
-                             ? `${currentItem.veterinarian_first_name} ${currentItem.veterinarian_last_name || ''}`
-                             : currentItem.veterinarian_name}
-                         </p>
-                       </div>
+                      <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-4xl shadow-lg border-2 border-white/20">👨‍⚕️</div>
+                      <div className="text-left">
+                        <p className="text-lg font-bold text-blue-300 uppercase tracking-widest leading-none mb-1">Qabul qiluvchi shifokor:</p>
+                        <p className="text-5xl font-black text-white">
+                          {currentItem.veterinarian_first_name
+                            ? `${currentItem.veterinarian_first_name} ${currentItem.veterinarian_last_name || ''}`
+                            : currentItem.veterinarian_name}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

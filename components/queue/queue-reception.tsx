@@ -12,7 +12,7 @@ import { CompleteVisitDialog } from "./complete-visit-dialog"
 import { useAuth } from "../auth-context"
 
 const getApiBase = (): string => {
-  if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+  if (typeof window === "undefined") return "https://dental.api.ardentsoft.uz/api";
   const { protocol, hostname, port } = window.location;
   let resolvedHost = hostname;
   if (hostname === "localhost") {
@@ -40,7 +40,7 @@ export function QueueReception() {
   useEffect(() => {
     fetchQueue()
     fetchPets()
-    
+
     // Polling fallback (less aggressive when SSE is active)
     const interval = setInterval(fetchQueue, 15000)
 
@@ -50,18 +50,18 @@ export function QueueReception() {
       try {
         const apiBase = getApiBase()
         eventSource = new EventSource(`${apiBase}/clinic/visits/events/`)
-        
+
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
             if (data.event === "queue_updated") {
               fetchQueue()
-              
+
               if (data.status === "CALLED") {
                 const docName = [data.veterinarian_first_name, data.veterinarian_last_name].filter(Boolean).join(' ') || "Shifokor"
                 const patName = data.customer_name || data.pet_name || "Bemor"
                 const roomStr = data.room_number ? `${data.room_number}-xona` : "Qabulxona"
-                
+
                 toast.info(
                   <div className="flex flex-col gap-1 text-left">
                     <span className="font-bold text-blue-600 flex items-center gap-1.5">🔔 Yangi Chaqiruv (Real-time)</span>
@@ -195,7 +195,7 @@ export function QueueReception() {
       toast.error("Bemorni tanlang")
       return
     }
-    
+
     try {
       const res = await ClinicAPI.createVisit({
         pet: selectedPet,
@@ -205,7 +205,7 @@ export function QueueReception() {
       })
       fetchQueue()
       toast.success("Navbatga qo'shildi")
-      
+
       setSelectedPet("")
       setSelectedDoctor("none")
       setPurpose("Tekshiruv")
@@ -325,9 +325,9 @@ export function QueueReception() {
                 </Select>
               </div>
               <div className="flex-[2]">
-                <Input 
+                <Input
                   id="purpose-input"
-                  placeholder="Tashrif maqsadi" 
+                  placeholder="Tashrif maqsadi"
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value)}
                 />

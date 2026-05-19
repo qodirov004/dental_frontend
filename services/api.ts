@@ -1,6 +1,6 @@
 import axios from "axios"
 
-const API_Base_URL = "http://127.0.0.1:8000/api"
+const API_Base_URL = "https://dental.api.ardentsoft.uz/api"
 
 export const api = axios.create({
     baseURL: API_Base_URL,
