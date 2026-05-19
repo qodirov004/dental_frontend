@@ -119,18 +119,6 @@ export function QueueReception() {
           return next
         })
 
-        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ') || "shifokor"
-        const room = unannounced.veterinarian_room
-        const patientName = unannounced.customer_name || unannounced.pet_name || "bemor"
-        const queueNum = unannounced.queue_number
-        // N003 -> N3, 015 -> 15 (faqat o'qish uchun nolni olib tashlash)
-        const spokenQueueNum = queueNum ? queueNum.replace(/^([a-zA-Z]*)0+(\d+)$/, '$1$2') : ""
-        const announcementText = `xurmatli mijoz ${spokenQueueNum} marhamat doktor ${doctorName} xonasiga kiring`
-
-        setTimeout(() => {
-          playAnnouncementWithDing(announcementText)
-        }, 500)
-
         // Mark as announced on the backend
         ClinicAPI.markAnnounced(unannounced.id.toString()).catch((err) => {
           console.error("Failed to mark announced:", err)
