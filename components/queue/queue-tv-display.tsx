@@ -136,7 +136,11 @@ export function QueueTVDisplay() {
         const queueNum = unannounced.queue_number
         // N003 -> N3, 015 -> 15 (faqat o'qish uchun nolni olib tashlash)
         const spokenQueueNum = queueNum ? queueNum.replace(/^([a-zA-Z]*)0+(\d+)$/, '$1$2') : ""
-        const announcementText = `xurmatli mijoz ${spokenQueueNum} marhamat doktor ${doctorName} xonasiga kiring`
+        
+        // Construct natural announcement, including room number if available
+        const announcementText = room 
+          ? `hurmatli mijoz ${spokenQueueNum}, marhamat, ${room}-xonaga, doktor ${doctorName} qabuliga kiring`
+          : `hurmatli mijoz ${spokenQueueNum}, marhamat, doktor ${doctorName} qabuliga kiring`;
 
         setTimeout(() => {
           playAnnouncementWithDing(announcementText)

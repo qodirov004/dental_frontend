@@ -50,29 +50,30 @@ const uzSpelling: { [key: string]: string } = {
 
 /**
  * Process text to make it more natural for TTS:
- * - Convert queue numbers (A001) to spoken words
- * - Expand abbreviations
+ * - Convert queue numbers (e.g. A001, K15, A 3) to spoken Uzbek words
+ * - Convert any other standalone numbers (like room numbers) to spoken Uzbek words
+ * - Expand abbreviations and fix spellings
  */
 const preprocessText = (text: string): string => {
     let processed = text;
 
-    // Handle queue number format like "A001", "K012" etc.
-    // Pattern: letter(s) followed by digits in "raqami" context (handles optional colons)
-    const queueMatch = processed.match(/raqami\s*:?\s*([A-Z]?)(\d+)/i);
-    if (queueMatch) {
-        const letter = queueMatch[1] || "";
-        const num = parseInt(queueMatch[2], 10);
+    // 1. Spell out queue numbers like "A003" or "K 15" naturally anywhere in the text
+    processed = processed.replace(/\b([A-Z])\s*0*([1-9]\d*|0)\b/gi, (match, letter, numStr) => {
+        const num = parseInt(numStr, 10);
         const numWords = numberToUzbekWords(num);
-        // Spell out the letter naturally in Uzbek
-        const letterSpoken = letter ? `${uzSpelling[letter.toUpperCase()] || letter}, ` : "";
-        processed = processed.replace(
-            /raqami\s*:?\s*[A-Z]?\d+/i,
-            `raqami ${letterSpoken}${numWords}`
-        );
-    }
+        const letterSpoken = uzSpelling[letter.toUpperCase()] || letter;
+        return `${letterSpoken} ${numWords}`;
+    });
 
-    // Replace common abbreviations
+    // 2. Spell out any remaining standalone numbers (e.g. "2" in "2-xonaga")
+    processed = processed.replace(/\b(\d+)\b/g, (match, numStr) => {
+        const num = parseInt(numStr, 10);
+        return numberToUzbekWords(num);
+    });
+
+    // Replace common abbreviations and typos for better accent
     processed = processed
+        .replace(/xurmatli/gi, "hurmatli")
         .replace(/Dr\./gi, "doktor")
         .replace(/shifokor\s+qabuliga/gi, "shifokor qabuliga");
 
