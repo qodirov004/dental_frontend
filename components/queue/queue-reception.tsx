@@ -107,23 +107,8 @@ export function QueueReception() {
       const queueList = Array.isArray(res.data) ? res.data : []
       setQueue(queueList)
 
-      // Auto-play announcement for newly CALLED, unannounced patients (only on Admin panel)
-      const unannounced = queueList.find(
-        (q: any) => q.status === "CALLED" && !q.is_announced
-      )
-
-      if (unannounced && !announcedIds.has(unannounced.id)) {
-        setAnnouncedIds((prev) => {
-          const next = new Set(prev)
-          next.add(unannounced.id)
-          return next
-        })
-
-        // Mark as announced on the backend
-        ClinicAPI.markAnnounced(unannounced.id.toString()).catch((err) => {
-          console.error("Failed to mark announced:", err)
-        })
-      }
+      // Reception screen no longer processes or marks unannounced patients.
+      // This is exclusively handled by queue-tv-display.tsx to prevent race conditions.
     } catch (e) {
       console.error("Queue fetch error:", e)
     } finally {
