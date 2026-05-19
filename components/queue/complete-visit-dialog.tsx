@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ClinicAPI } from "@/services/api"
 import { toast } from "sonner"
-import { PDFPreviewModal } from "./pdf-preview-modal"
 import { playAnnouncementWithDing } from "@/lib/tts"
 
 interface CompleteVisitDialogProps {
@@ -20,8 +19,6 @@ interface CompleteVisitDialogProps {
 
 export function CompleteVisitDialog(props: CompleteVisitDialogProps) {
     const [loading, setLoading] = useState(false)
-    const [previewOpen, setPreviewOpen] = useState(false)
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
     const [formData, setFormData] = useState({
         diagnosis: "",
         treatment_notes: "",
@@ -30,20 +27,6 @@ export function CompleteVisitDialog(props: CompleteVisitDialogProps) {
         total_amount: "",
         payment_method: "CASH"
     })
-
-    const handleFetchReceipt = async (id: number) => {
-        try {
-            const res = await ClinicAPI.downloadVisitReceipt(id.toString())
-            const blob = new Blob([res.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            setPdfUrl(url)
-            setPreviewOpen(true)
-        } catch (e) {
-            console.error(e)
-            toast.error("Chekni yuklashda xatolik")
-        }
-    }
-
     const { open, onOpenChange, visitId, onSuccess } = props;
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -73,12 +56,7 @@ export function CompleteVisitDialog(props: CompleteVisitDialogProps) {
                 })
             }
 
-            // Show preview
-            await handleFetchReceipt(visitId)
-
             onSuccess()
-            // We don't close the main dialog yet because we want to see the preview
-            // Or we close main and open preview. Let's close main.
             onOpenChange(false)
         } catch (error) {
             console.error(error)
@@ -177,18 +155,6 @@ export function CompleteVisitDialog(props: CompleteVisitDialogProps) {
                     </form>
                 </DialogContent>
             </Dialog>
-
-            <PDFPreviewModal
-                open={previewOpen}
-                onOpenChange={(v) => {
-                    setPreviewOpen(v)
-                    if (!v && pdfUrl) {
-                        window.URL.revokeObjectURL(pdfUrl)
-                        setPdfUrl(null)
-                    }
-                }}
-                pdfUrl={pdfUrl}
-            />
         </>
     )
 }

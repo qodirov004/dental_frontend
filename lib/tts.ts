@@ -57,8 +57,8 @@ const preprocessText = (text: string): string => {
     let processed = text;
 
     // Handle queue number format like "A001", "K012" etc.
-    // Pattern: letter(s) followed by digits in "raqami" context
-    const queueMatch = processed.match(/raqami\s+([A-Z]?)(\d+)/i);
+    // Pattern: letter(s) followed by digits in "raqami" context (handles optional colons)
+    const queueMatch = processed.match(/raqami\s*:?\s*([A-Z]?)(\d+)/i);
     if (queueMatch) {
         const letter = queueMatch[1] || "";
         const num = parseInt(queueMatch[2], 10);
@@ -66,7 +66,7 @@ const preprocessText = (text: string): string => {
         // Spell out the letter naturally in Uzbek
         const letterSpoken = letter ? `${uzSpelling[letter.toUpperCase()] || letter}, ` : "";
         processed = processed.replace(
-            /raqami\s+[A-Z]?\d+/i,
+            /raqami\s*:?\s*[A-Z]?\d+/i,
             `raqami ${letterSpoken}${numWords}`
         );
     }
@@ -110,19 +110,36 @@ const splitTextIntoChunks = (text: string, maxLen = 200): string[] => {
     return chunks;
 };
 
-const API_BASE = "https://dental.api.ardentsoft.uz/api";
+const getApiBase = (): string => {
+    if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+    const { protocol, hostname, port } = window.location;
+    let resolvedHost = hostname;
+    if (hostname === "localhost") {
+        resolvedHost = "127.0.0.1";
+    }
+    
+    // If in local development or local network, point to Django port 8000
+    if (port === "3000" || port === "3001" || port === "3002" || resolvedHost === "127.0.0.1" || /^192\.168\./.test(resolvedHost)) {
+        return `${protocol}//${resolvedHost}:8000/api`;
+    }
+    
+    // Production/Staging fallback: use current domain/port
+    return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}/api`;
+};
 
 /**
  * Play audio using high-quality backend TTS proxy endpoint.
- * The backend proxies requests to deliver professional neural voices without CORS restrictions.
+ * The backend proxies requests to deliver professional neural voices without CORS/User-Agent restrictions.
  */
 const playGoogleTTS = async (text: string): Promise<boolean> => {
     try {
         const chunks = splitTextIntoChunks(text);
+        const apiBase = getApiBase();
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = encodeURIComponent(chunks[i]);
-            const url = `${API_BASE}/clinic/tts/?text=${chunk}`;
+            // Backend TTS proxy URL for genuine Uzbek voice
+            const url = `${apiBase}/clinic/tts/?text=${chunk}`;
 
             await new Promise<void>((resolve, reject) => {
                 // Stop any currently playing audio
@@ -161,7 +178,50 @@ const playGoogleTTS = async (text: string): Promise<boolean> => {
 };
 
 /**
- * Fallback: Browser SpeechSynthesis with optimized settings
+ * Phonetic transliteration from Latin Uzbek to Russian Cyrillic for browser voice fallback.
+ * By mapping letters like q->к, h->х, and o'->о, the Russian TTS engine pronounces
+ * the words with a highly accurate, natural-sounding Uzbek accent.
+ */
+const latinToCyrillic = (text: string): string => {
+    const map: { [key: string]: string } = {
+        "ch": "ч", "Ch": "Ч", "CH": "Ч",
+        "sh": "ш", "Sh": "Ш", "SH": "Ш",
+        "yo'": "ё", "Yo'": "Ё", "YO'": "Ё",
+        "ya": "я", "Ya": "Я", "YA": "Я",
+        "yu": "ю", "Yu": "Ю", "YU": "Ю",
+        "ye": "е", "Ye": "Е", "YE": "Е",
+        "o'": "о", "O'": "О", "g'": "г",
+        "G'": "Г", "q": "к", "Q": "К",
+        "h": "х", "H": "Х", "x": "х",
+        "X": "Х", "a": "а", "A": "А",
+        "b": "б", "B": "Б", "v": "в",
+        "V": "В", "g": "г", "G": "Г",
+        "d": "д", "D": "Д", "e": "е",
+        "E": "Е", "j": "ж", "J": "Ж",
+        "z": "з", "Z": "З", "i": "и",
+        "I": "И", "k": "к", "K": "К",
+        "l": "л", "L": "Л", "m": "м",
+        "M": "М", "n": "н", "N": "Н",
+        "o": "о", "O": "О", "p": "п",
+        "P": "П", "r": "р", "R": "Р",
+        "s": "с", "S": "С", "t": "т",
+        "T": "Т", "u": "у", "U": "У",
+        "f": "ф", "F": "Ф", "ts": "ц",
+        "Ts": "Ц", "TS": "Ц"
+    };
+
+    let result = text;
+    // Replace multi-character combinations first
+    const sortedKeys = Object.keys(map).sort((a, b) => b.length - a.length);
+    for (const key of sortedKeys) {
+        const regex = new RegExp(key, 'g');
+        result = result.replace(regex, map[key]);
+    }
+    return result;
+};
+
+/**
+ * Fallback and Local SpeechSynthesis with Microsoft Madina (HD) priority
  */
 const playBrowserTTS = (text: string): void => {
     if (!window.speechSynthesis) return;
@@ -169,30 +229,45 @@ const playBrowserTTS = (text: string): void => {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
 
-    const msg = new SpeechSynthesisUtterance(text);
     const voices = window.speechSynthesis.getVoices();
 
     // Priority order for voice selection:
-    // 1. Uzbek voice (uz-UZ)
-    // 2. Turkish voice (tr-TR) - closest related language
-    // 3. Russian voice (ru-RU) - many Uzbek speakers understand Russian accent
-    // 4. Default
+    // 1. Madina (HD) voice (Microsoft Madina Online) - stunning natural Uzbek voice
+    // 2. Uzbek voice (uz-UZ)
+    // 3. Turkish voice (tr-TR) - closest related language
+    // 4. Russian voice (ru-RU) - fallback with phonetic transliteration
+    // 5. Default
+    const madinaVoice = voices.find(v => v.name.toLowerCase().includes('madina'));
     const uzVoice = voices.find(v => v.lang.startsWith('uz'));
     const trVoice = voices.find(v => v.lang.startsWith('tr'));
     const ruVoice = voices.find(v => v.lang.startsWith('ru'));
 
-    if (uzVoice) {
-        msg.voice = uzVoice;
-        msg.lang = uzVoice.lang;
+    let speakText = text;
+    let selectedVoice: SpeechSynthesisVoice | null = null;
+    let selectedLang = 'tr-TR';
+
+    if (madinaVoice) {
+        selectedVoice = madinaVoice;
+        selectedLang = madinaVoice.lang;
+    } else if (uzVoice) {
+        selectedVoice = uzVoice;
+        selectedLang = uzVoice.lang;
     } else if (trVoice) {
-        msg.voice = trVoice;
-        msg.lang = trVoice.lang;
+        selectedVoice = trVoice;
+        selectedLang = trVoice.lang;
     } else if (ruVoice) {
-        // For Russian voice, transliterate Uzbek text to be more readable
-        msg.voice = ruVoice;
-        msg.lang = ruVoice.lang;
+        // Transliterate to Cyrillic so the Russian voice pronounces Uzbek beautifully
+        selectedVoice = ruVoice;
+        selectedLang = ruVoice.lang;
+        speakText = latinToCyrillic(text);
+    }
+
+    const msg = new SpeechSynthesisUtterance(speakText);
+    if (selectedVoice) {
+        msg.voice = selectedVoice;
+        msg.lang = selectedLang;
     } else {
-        msg.lang = 'tr-TR';
+        msg.lang = selectedLang;
     }
 
     msg.rate = 0.85;   // Slower for better clarity in clinical setting
@@ -204,17 +279,30 @@ const playBrowserTTS = (text: string): void => {
 
 /**
  * Main TTS function: Play an Uzbek voice announcement
- * Tries Google TTS first, falls back to browser SpeechSynthesis
+ * Tries Microsoft Madina (HD) natively first, then Google TTS backend proxy, then browser fallbacks
  */
 export const playUzbekVoice = async (text: string): Promise<void> => {
     if (typeof window === "undefined") return;
 
     const processedText = preprocessText(text);
 
-    // Try Google TTS first for natural Uzbek pronunciation
+    // 1. Try to find the high-quality Microsoft Madina (HD) voice in SpeechSynthesis first.
+    // If it is natively present, use it immediately for zero latency and HD quality!
+    if (window.speechSynthesis) {
+        const voices = window.speechSynthesis.getVoices();
+        const madinaVoice = voices.find(v => v.name.toLowerCase().includes('madina'));
+        
+        if (madinaVoice) {
+            console.log("Found native Microsoft Madina (HD) voice. Using for local synthesis:", madinaVoice.name);
+            playBrowserTTS(processedText);
+            return;
+        }
+    }
+
+    // 2. Try Google TTS backend proxy next for natural Uzbek pronunciation
     const success = await playGoogleTTS(processedText);
 
-    // If Google TTS fails, use browser fallback
+    // 3. If Google TTS fails, use browser fallback
     if (!success) {
         playBrowserTTS(processedText);
     }

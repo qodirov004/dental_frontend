@@ -4,23 +4,106 @@ import { useState, useEffect } from "react"
 import { ClinicAPI } from "@/services/api"
 import { playAnnouncementWithDing } from "@/lib/tts"
 
+const getApiBase = (): string => {
+  if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+  const { protocol, hostname, port } = window.location;
+  let resolvedHost = hostname;
+  if (hostname === "localhost") {
+    resolvedHost = "127.0.0.1";
+  }
+  if (port === "3000" || port === "3001" || port === "3002" || resolvedHost === "127.0.0.1" || /^192\.168\./.test(resolvedHost)) {
+    return `${protocol}//${resolvedHost}:8000/api`;
+  }
+  return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}/api`;
+};
+
 export function QueueTVDisplay() {
   const [currentItem, setCurrentItem] = useState<any | null>(null)
   const [nextItems, setNextItems] = useState<any[]>([])
   const [time, setTime] = useState<string>("")
   const [announcedIds, setAnnouncedIds] = useState<Set<number>>(new Set())
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false)
+
+  const unlockAudio = () => {
+    try {
+      // Unlock Web Audio API Context
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        if (ctx.state === "suspended") {
+          ctx.resume();
+        }
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      }
+      
+      // Play a short silent buffer to unlock HTML5 Audio
+      const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+      audio.play().then(() => {
+        setIsAudioUnlocked(true);
+        console.log("Audio system successfully unlocked on TV Display!");
+      }).catch((e) => {
+        console.error("Audio play failed on unlock:", e);
+        setIsAudioUnlocked(true); // set true anyway so they can see the dashboard
+      });
+    } catch (e) {
+      console.error("Unlock audio error:", e);
+      setIsAudioUnlocked(true);
+    }
+  };
 
   useEffect(() => {
     fetchQueue()
-    const interval = setInterval(fetchQueue, 5000) // Poll every 5 seconds
+    
+    // Polling fallback (less aggressive when SSE is active)
+    const interval = setInterval(fetchQueue, 15000)
 
     const clockInterval = setInterval(() => {
       setTime(new Date().toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
     }, 1000)
 
+    // Real-time SSE Connection
+    let eventSource: EventSource | null = null;
+    const connectSSE = () => {
+      try {
+        const apiBase = getApiBase()
+        eventSource = new EventSource(`${apiBase}/clinic/visits/events/`)
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.event === "queue_updated") {
+              fetchQueue()
+            }
+          } catch (e) {
+            console.error("SSE parse error:", e)
+          }
+        }
+
+        eventSource.onerror = (err) => {
+          console.error("SSE Connection error, reconnecting in 5s...", err)
+          if (eventSource) {
+            eventSource.close()
+          }
+          setTimeout(connectSSE, 5000)
+        }
+      } catch (err) {
+        console.error("SSE creation error:", err)
+        setTimeout(connectSSE, 5000)
+      }
+    }
+
+    connectSSE()
+
     return () => {
       clearInterval(interval)
       clearInterval(clockInterval)
+      if (eventSource) {
+        eventSource.close()
+      }
     }
   }, [])
 
@@ -47,11 +130,16 @@ export function QueueTVDisplay() {
           return next
         })
 
-        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ')
+        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ') || "shifokor"
+        const room = unannounced.veterinarian_room
+        const patientName = unannounced.customer_name || unannounced.pet_name || "bemor"
+        const queueNum = unannounced.queue_number
+        // N003 -> N3, 015 -> 15 (faqat o'qish uchun nolni olib tashlash)
+        const spokenQueueNum = queueNum ? queueNum.replace(/^([a-zA-Z]*)0+(\d+)$/, '$1$2') : ""
+        const announcementText = `xurmatli mijoz ${spokenQueueNum} marhamat doktor ${doctorName} xonasiga kiring`
+
         setTimeout(() => {
-          playAnnouncementWithDing(
-            `Hurmatli bemor! Navbat raqami ${unannounced.queue_number}. Marhamat, ${doctorName ? `doktor ${doctorName}` : 'shifokor'} xonasiga kiring.`
-          )
+          playAnnouncementWithDing(announcementText)
         }, 500)
 
         // Mark as announced on the backend
@@ -62,6 +150,35 @@ export function QueueTVDisplay() {
     } catch (e) {
       console.error(e)
     }
+  }
+
+  if (!isAudioUnlocked) {
+    return (
+      <div 
+        onClick={unlockAudio}
+        className="fixed inset-0 z-50 bg-[#0f172a] text-white flex flex-col items-center justify-center p-8 font-sans cursor-pointer overflow-hidden"
+      >
+        <div className="max-w-2xl text-center space-y-8 animate-fade-in">
+          <div className="relative inline-block">
+            <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
+            <div className="relative w-40 h-40 bg-blue-600/10 rounded-full flex items-center justify-center border-4 border-blue-500/40 text-7xl animate-bounce">
+              🔔
+            </div>
+          </div>
+          <div className="space-y-4">
+            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
+              Ovozli Chaqiruv Tizimi
+            </h1>
+            <p className="text-xl md:text-2xl text-slate-400 font-medium max-w-lg mx-auto leading-relaxed">
+              Navbat chaqiruvlari va xabarlarini eshitish uchun ekraning istalgan joyiga bosing.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-3 bg-blue-500/10 px-8 py-4 rounded-full border border-blue-500/20 animate-pulse text-blue-400 text-lg font-black tracking-wide uppercase">
+            ⚡ FAOL LASHTIRISH UCHUN BOSING ⚡
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

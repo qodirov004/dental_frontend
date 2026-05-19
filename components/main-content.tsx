@@ -6,7 +6,6 @@ import { CustomersView } from "./views/customers-view"
 import { MedicalView } from "./views/medical-view"
 import { DebtView } from "./views/debt-view"
 import { AlertsView } from "./views/alerts-view"
-import { FeedbackView } from "./views/feedback-view"
 import { StaffView } from "./views/staff-view"
 import { UnifiedAnalyticsView } from "./views/unified-analytics-view"
 import { useAuth } from "./auth-context"
@@ -24,15 +23,14 @@ export function MainContent({
 
   const canAccess = (tab: string) => {
     switch (tab) {
-      case "dashboard": return true
-      case "queue": return true
-      case "customers": return true
+      case "dashboard": return ["ADMIN", "RECEPTIONIST", "ASSISTANT"].includes(role)
+      case "queue": return ["ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT"].includes(role)
+      case "customers": return ["ADMIN", "RECEPTIONIST", "ASSISTANT"].includes(role)
       case "medical": return ["ADMIN", "DOCTOR"].includes(role)
       case "debt": return ["ADMIN", "RECEPTIONIST"].includes(role)
       case "alerts": return ["ADMIN", "RECEPTIONIST"].includes(role)
-      case "feedback": return ["ADMIN", "RECEPTIONIST"].includes(role)
       case "staff": return role === "ADMIN"
-      case "unified-analytics": return ["ADMIN", "DOCTOR"].includes(role)
+      case "unified-analytics": return role === "ADMIN"
       default: return false
     }
   }
@@ -58,7 +56,6 @@ export function MainContent({
       {activeTab === "medical" && <MedicalView />}
       {activeTab === "debt" && <DebtView />}
       {activeTab === "alerts" && <AlertsView onNavigate={onNavigate} />}
-      {activeTab === "feedback" && <FeedbackView />}
       {activeTab === "staff" && <StaffView />}
       {activeTab === "unified-analytics" && <UnifiedAnalyticsView />}
     </main>

@@ -9,8 +9,23 @@ import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { playAnnouncementWithDing } from "@/lib/tts"
 import { CompleteVisitDialog } from "./complete-visit-dialog"
+import { useAuth } from "../auth-context"
+
+const getApiBase = (): string => {
+  if (typeof window === "undefined") return "http://127.0.0.1:8000/api";
+  const { protocol, hostname, port } = window.location;
+  let resolvedHost = hostname;
+  if (hostname === "localhost") {
+    resolvedHost = "127.0.0.1";
+  }
+  if (port === "3000" || port === "3001" || port === "3002" || resolvedHost === "127.0.0.1" || /^192\.168\./.test(resolvedHost)) {
+    return `${protocol}//${resolvedHost}:8000/api`;
+  }
+  return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}/api`;
+};
 
 export function QueueReception() {
+  const { user } = useAuth()
   const [queue, setQueue] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [pets, setPets] = useState<any[]>([])
@@ -25,8 +40,64 @@ export function QueueReception() {
   useEffect(() => {
     fetchQueue()
     fetchPets()
-    const interval = setInterval(fetchQueue, 10000) // Auto-refresh every 10s
-    return () => clearInterval(interval)
+    
+    // Polling fallback (less aggressive when SSE is active)
+    const interval = setInterval(fetchQueue, 15000)
+
+    // Real-time SSE Connection
+    let eventSource: EventSource | null = null;
+    const connectSSE = () => {
+      try {
+        const apiBase = getApiBase()
+        eventSource = new EventSource(`${apiBase}/clinic/visits/events/`)
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.event === "queue_updated") {
+              fetchQueue()
+              
+              if (data.status === "CALLED") {
+                const docName = [data.veterinarian_first_name, data.veterinarian_last_name].filter(Boolean).join(' ') || "Shifokor"
+                const patName = data.customer_name || data.pet_name || "Bemor"
+                const roomStr = data.room_number ? `${data.room_number}-xona` : "Qabulxona"
+                
+                toast.info(
+                  <div className="flex flex-col gap-1 text-left">
+                    <span className="font-bold text-blue-600 flex items-center gap-1.5">🔔 Yangi Chaqiruv (Real-time)</span>
+                    <span className="text-sm font-semibold">{roomStr}, {docName} qabuli</span>
+                    <span className="text-xs text-muted-foreground">Navbat: {data.queue_number} — {patName}</span>
+                  </div>,
+                  { duration: 8000 }
+                )
+              }
+            }
+          } catch (e) {
+            console.error("SSE parse error:", e)
+          }
+        }
+
+        eventSource.onerror = (err) => {
+          console.error("SSE Connection error, reconnecting in 5s...", err)
+          if (eventSource) {
+            eventSource.close()
+          }
+          setTimeout(connectSSE, 5000)
+        }
+      } catch (err) {
+        console.error("SSE creation error:", err)
+        setTimeout(connectSSE, 5000)
+      }
+    }
+
+    connectSSE()
+
+    return () => {
+      clearInterval(interval)
+      if (eventSource) {
+        eventSource.close()
+      }
+    }
   }, [])
 
   const fetchQueue = async () => {
@@ -48,11 +119,16 @@ export function QueueReception() {
           return next
         })
 
-        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ')
+        const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ') || "shifokor"
+        const room = unannounced.veterinarian_room
+        const patientName = unannounced.customer_name || unannounced.pet_name || "bemor"
+        const queueNum = unannounced.queue_number
+        // N003 -> N3, 015 -> 15 (faqat o'qish uchun nolni olib tashlash)
+        const spokenQueueNum = queueNum ? queueNum.replace(/^([a-zA-Z]*)0+(\d+)$/, '$1$2') : ""
+        const announcementText = `xurmatli mijoz ${spokenQueueNum} marhamat doktor ${doctorName} xonasiga kiring`
+
         setTimeout(() => {
-          playAnnouncementWithDing(
-            `Hurmatli bemor! Navbat raqami ${unannounced.queue_number}. Marhamat, ${doctorName ? `doktor ${doctorName}` : 'shifokor'} xonasiga kiring.`
-          )
+          playAnnouncementWithDing(announcementText)
         }, 500)
 
         // Mark as announced on the backend
@@ -212,56 +288,58 @@ export function QueueReception() {
       </div>
 
       {/* Add new queue */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Yangi Navbat</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1">
-              <Select value={selectedPet} onValueChange={setSelectedPet}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Bemor va egasini tanlang" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pets.map(pet => (
-                    <SelectItem key={pet.id} value={pet.id.toString()}>
-                      {pet.name} ({pet.customer_name || 'Mijozsiz'})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {user?.role !== "DOCTOR" && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Yangi Navbat</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1">
+                <Select value={selectedPet} onValueChange={setSelectedPet}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Bemor va egasini tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pets.map(pet => (
+                      <SelectItem key={pet.id} value={pet.id.toString()}>
+                        {pet.name} ({pet.customer_name || 'Mijozsiz'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                  <SelectTrigger id="vet-select-trigger">
+                    <SelectValue placeholder="Shifokorni tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ixtiyoriy shifokor</SelectItem>
+                    {doctors.map(doc => (
+                      <SelectItem key={doc.id} value={doc.id.toString()}>
+                        {doc.first_name} {doc.last_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-[2]">
+                <Input 
+                  id="purpose-input"
+                  placeholder="Tashrif maqsadi" 
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleAddQueue} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Qo'shish
+              </Button>
             </div>
-            <div className="flex-1">
-              <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                <SelectTrigger id="vet-select-trigger">
-                  <SelectValue placeholder="Shifokorni tanlang" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Ixtiyoriy shifokor</SelectItem>
-                  {doctors.map(doc => (
-                    <SelectItem key={doc.id} value={doc.id.toString()}>
-                      {doc.first_name} {doc.last_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-[2]">
-              <Input 
-                id="purpose-input"
-                placeholder="Tashrif maqsadi" 
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-              />
-            </div>
-            <Button onClick={handleAddQueue} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Qo'shish
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
 
       {/* Queue list */}

@@ -14,7 +14,6 @@ import {
   AlertCircle,
   Layout,
   LogOut,
-  Star,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "./auth-context"
@@ -30,15 +29,14 @@ export function Sidebar({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }
   const { user, logout } = useAuth()
 
   const menuItems = [
-    { id: "dashboard", label: "Bosh sahifa", icon: Layout, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT"] },
+    { id: "dashboard", label: "Bosh sahifa", icon: Layout, roles: ["ADMIN", "RECEPTIONIST", "ASSISTANT"] },
     { id: "queue", label: "Navbat tizimi", icon: Calendar, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT"] },
-    { id: "customers", label: "Bemorlar", icon: Users, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT"] },
+    { id: "customers", label: "Bemorlar", icon: Users, roles: ["ADMIN", "RECEPTIONIST", "ASSISTANT"] },
     { id: "medical", label: "Tibbiy tarix", icon: History, roles: ["ADMIN", "DOCTOR"] },
     { id: "debt", label: "Qarzlar", icon: DollarSign, roles: ["ADMIN", "RECEPTIONIST"] },
     { id: "alerts", label: "Ogohlantirishlar", icon: AlertCircle, roles: ["ADMIN", "RECEPTIONIST"] },
-    { id: "feedback", label: "Mijozlar Baholari", icon: Star, roles: ["ADMIN", "RECEPTIONIST"] },
     { id: "staff", label: "Xodimlar (Shifokorlar)", icon: Stethoscope, roles: ["ADMIN"] },
-    { id: "unified-analytics", label: "Hisobotlar & Tahlil", icon: BarChart3, roles: ["ADMIN", "DOCTOR"] },
+    { id: "unified-analytics", label: "Hisobotlar & Tahlil", icon: BarChart3, roles: ["ADMIN"] },
   ]
 
   const filteredItems = menuItems.filter(item => item.roles.includes(user?.role || ""))

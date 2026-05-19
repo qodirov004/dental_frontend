@@ -27,7 +27,8 @@ function DashboardGuard() {
 }
 
 function DashboardContent() {
-  const [activeTab, setActiveTab] = useState("dashboard")
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState(user?.role === "DOCTOR" ? "queue" : "dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   if (!activeTab) return null
