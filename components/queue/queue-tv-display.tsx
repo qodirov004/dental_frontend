@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ClinicAPI } from "@/services/api"
 import { playAnnouncementWithDing } from "@/lib/tts"
 
@@ -23,6 +23,27 @@ export function QueueTVDisplay() {
   const [time, setTime] = useState<string>("")
   const [announcedIds, setAnnouncedIds] = useState<Set<number>>(new Set())
   const [isAudioUnlocked, setIsAudioUnlocked] = useState(false)
+
+  // Dynamic language configuration with localStorage persistence, default to Russian
+  const [lang, setLang] = useState<'uz' | 'ru'>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("queue_announcement_lang") as 'uz' | 'ru') || 'ru'
+    }
+    return 'ru'
+  })
+
+  // Prevent stale closures in async intervals/SSE events
+  const langRef = useRef(lang)
+  useEffect(() => {
+    langRef.current = lang
+  }, [lang])
+
+  const handleLangChange = (newLang: 'uz' | 'ru') => {
+    setLang(newLang)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("queue_announcement_lang", newLang)
+    }
+  }
 
   const unlockAudio = () => {
     try {
@@ -62,7 +83,7 @@ export function QueueTVDisplay() {
     const interval = setInterval(fetchQueue, 15000)
 
     const clockInterval = setInterval(() => {
-      setTime(new Date().toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
+      setTime(new Date().toLocaleTimeString(langRef.current === 'ru' ? "ru-RU" : "uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
     }, 1000)
 
     // Real-time SSE Connection
@@ -132,18 +153,23 @@ export function QueueTVDisplay() {
 
         const doctorName = [unannounced.veterinarian_first_name, unannounced.veterinarian_last_name].filter(Boolean).join(' ') || "shifokor"
         const room = unannounced.veterinarian_room
-        const patientName = unannounced.customer_name || unannounced.pet_name || "bemor"
         const queueNum = unannounced.queue_number
         // N003 -> N3, 015 -> 15 (faqat o'qish uchun nolni olib tashlash)
         const spokenQueueNum = queueNum ? queueNum.replace(/^([a-zA-Z]*)0+(\d+)$/, '$1$2') : ""
         
-        // Construct natural announcement, including room number if available
-        const announcementText = room 
-          ? `hurmatli mijoz ${spokenQueueNum}, marhamat, ${room}-xonaga, doktor ${doctorName} qabuliga kiring`
-          : `hurmatli mijoz ${spokenQueueNum}, marhamat, doktor ${doctorName} qabuliga kiring`;
+        const currentLang = langRef.current;
+
+        // Construct natural announcement based on language setting
+        const announcementText = currentLang === 'ru'
+          ? (room 
+            ? `Уважаемый пациент ${spokenQueueNum}, пожалуйста, пройдите в кабинет ${room}, к доктору ${doctorName}.`
+            : `Уважаемый пациент ${spokenQueueNum}, пожалуйста, пройдите к доктору ${doctorName}.`)
+          : (room 
+            ? `hurmatli mijoz ${spokenQueueNum}, marhamat, ${room}-xonaga, doktor ${doctorName} qabuliga kiring`
+            : `hurmatli mijoz ${spokenQueueNum}, marhamat, doktor ${doctorName} qabuliga kiring`);
 
         setTimeout(() => {
-          playAnnouncementWithDing(announcementText)
+          playAnnouncementWithDing(announcementText, currentLang)
         }, 500)
 
         // Mark as announced on the backend
@@ -171,14 +197,16 @@ export function QueueTVDisplay() {
           </div>
           <div className="space-y-4">
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
-              Ovozli Chaqiruv Tizimi
+              {lang === 'ru' ? 'Голосовая Система Вызова' : 'Ovozli Chaqiruv Tizimi'}
             </h1>
             <p className="text-xl md:text-2xl text-slate-400 font-medium max-w-lg mx-auto leading-relaxed">
-              Navbat chaqiruvlari va xabarlarini eshitish uchun ekraning istalgan joyiga bosing.
+              {lang === 'ru' 
+                ? 'Нажмите в любом месте экрана для активации вызовов пациентов и звуковых оповещений.' 
+                : 'Navbat chaqiruvlari va xabarlarini eshitish uchun ekraning istalgan joyiga bosing.'}
             </p>
           </div>
           <div className="inline-flex items-center gap-3 bg-blue-500/10 px-8 py-4 rounded-full border border-blue-500/20 animate-pulse text-blue-400 text-lg font-black tracking-wide uppercase">
-            ⚡ FAOL LASHTIRISH UCHUN BOSING ⚡
+            {lang === 'ru' ? '⚡ НАЖМИТЕ ДЛЯ АКТИВАЦИИ ⚡' : '⚡ FAOL LASHTIRISH UCHUN BOSING ⚡'}
           </div>
         </div>
       </div>
@@ -193,12 +221,41 @@ export function QueueTVDisplay() {
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-4xl shadow-lg shadow-blue-500/20">🦷</div>
           <div>
             <h1 className="text-5xl font-black tracking-tighter text-blue-400">DENTALCLINIC <span className="text-white font-light">PRO</span></h1>
-            <p className="text-blue-200/60 font-bold tracking-[0.3em] text-sm">ELEKTRON NAVBAT TIZIMI</p>
+            <p className="text-blue-200/60 font-bold tracking-[0.3em] text-sm">
+              {lang === 'ru' ? 'ЭЛЕКТРОННАЯ СИСТЕМА ОЧЕРЕДИ' : 'ELEKTRON NAVBAT TIZIMI'}
+            </p>
           </div>
         </div>
+
+        {/* Premium Language Selector */}
+        <div className="flex items-center gap-2 bg-white/5 p-2 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner">
+          <button
+            onClick={() => handleLangChange('uz')}
+            className={`px-5 py-2.5 rounded-xl font-black text-sm transition-all duration-300 flex items-center gap-2 ${
+              lang === 'uz'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 scale-105'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <span className="text-lg">🇺🇿</span> O'zbekcha
+          </button>
+          <button
+            onClick={() => handleLangChange('ru')}
+            className={`px-5 py-2.5 rounded-xl font-black text-sm transition-all duration-300 flex items-center gap-2 ${
+              lang === 'ru'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 scale-105'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <span className="text-lg">🇷🇺</span> Русский
+          </button>
+        </div>
+
         <div className="text-right">
           <p className="text-5xl font-mono font-bold tracking-widest text-blue-400">{time}</p>
-          <p className="text-sm text-white/40 uppercase tracking-[0.2em] font-bold">Bugun: {new Date().toLocaleDateString("uz-UZ")}</p>
+          <p className="text-sm text-white/40 uppercase tracking-[0.2em] font-bold">
+            {lang === 'ru' ? 'Сегодня:' : 'Bugun:'} {new Date().toLocaleDateString(lang === 'ru' ? "ru-RU" : "uz-UZ")}
+          </p>
         </div>
       </div>
 
@@ -216,7 +273,9 @@ export function QueueTVDisplay() {
               <div className="relative z-10 w-full animate-in fade-in zoom-in duration-700">
                 <div className="inline-block px-8 py-3 bg-white/20 rounded-full backdrop-blur-xl mb-12 border border-white/30 shadow-xl">
                   <span className="text-2xl font-black uppercase tracking-[0.3em]">
-                    {currentItem.status === "CALLED" ? "🔔 CHAQIRILMOQDA" : "⚕️ QABULDA"}
+                    {currentItem.status === "CALLED" 
+                      ? (lang === 'ru' ? "🔔 ВЫЗЫВАЕТСЯ" : "🔔 CHAQIRILMOQDA") 
+                      : (lang === 'ru' ? "⚕️ НА ПРИЕМЕ" : "⚕️ QABULDA")}
                   </span>
                 </div>
 
@@ -226,7 +285,9 @@ export function QueueTVDisplay() {
                   </p>
                   <div className="mt-4 px-10 py-4 bg-black/30 rounded-3xl border border-white/10 backdrop-blur-md">
                     <p className="text-4xl font-bold text-blue-300 uppercase tracking-widest">
-                      {currentItem.veterinarian_room ? `${currentItem.veterinarian_room}-XONA` : "KABINETGA KIRING"}
+                      {currentItem.veterinarian_room 
+                        ? (lang === 'ru' ? `КАБИНЕТ ${currentItem.veterinarian_room}` : `${currentItem.veterinarian_room}-XONA`) 
+                        : (lang === 'ru' ? "ПРОЙДИТЕ В КАБИНЕТ" : "KABINETGA KIRING")}
                     </p>
                   </div>
                 </div>
@@ -246,7 +307,9 @@ export function QueueTVDisplay() {
                     <div className="mt-8 bg-white/10 py-6 px-12 rounded-[2.5rem] inline-flex items-center gap-6 border border-white/20 shadow-2xl backdrop-blur-xl">
                       <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-4xl shadow-lg border-2 border-white/20">👨‍⚕️</div>
                       <div className="text-left">
-                        <p className="text-lg font-bold text-blue-300 uppercase tracking-widest leading-none mb-1">Qabul qiluvchi shifokor:</p>
+                        <p className="text-lg font-bold text-blue-300 uppercase tracking-widest leading-none mb-1">
+                          {lang === 'ru' ? 'Принимающий врач:' : 'Qabul qiluvchi shifokor:'}
+                        </p>
                         <p className="text-5xl font-black text-white">
                           {currentItem.veterinarian_first_name
                             ? `${currentItem.veterinarian_first_name} ${currentItem.veterinarian_last_name || ''}`
@@ -259,7 +322,9 @@ export function QueueTVDisplay() {
               </div>
             ) : (
               <div className="text-center opacity-40">
-                <p className="text-5xl mb-8 font-black tracking-widest">NAVABAT KUTILMOQDA</p>
+                <p className="text-5xl mb-8 font-black tracking-widest">
+                  {lang === 'ru' ? 'ОЧЕРЕДЬ ОЖИДАЕТСЯ' : 'NAVBAT KUTILMOQDA'}
+                </p>
                 <div className="w-32 h-32 border-8 border-dashed border-white/30 rounded-full mx-auto animate-spin-slow flex items-center justify-center">
                   <span className="text-4xl">🦷</span>
                 </div>
@@ -271,7 +336,9 @@ export function QueueTVDisplay() {
         {/* RIGHT: Waiting List (Col 4) */}
         <div className="col-span-4 flex flex-col bg-white/5 rounded-[2.5rem] border border-white/10 overflow-hidden backdrop-blur-md shadow-xl">
           <div className="p-8 border-b border-white/10 bg-white/5 flex items-center justify-between">
-            <h2 className="text-2xl font-black uppercase tracking-widest text-blue-300">KEYINGI NAVBATLAR</h2>
+            <h2 className="text-2xl font-black uppercase tracking-widest text-blue-300">
+              {lang === 'ru' ? 'СЛЕДУЮЩИЕ В ОЧЕРЕДИ' : 'KEYINGI NAVBATLAR'}
+            </h2>
             <span className="bg-blue-600 text-sm font-black px-4 py-2 rounded-full border border-blue-400/50 shadow-lg">
               {nextItems.length}
             </span>
@@ -299,7 +366,9 @@ export function QueueTVDisplay() {
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-white/20 text-center p-12">
                 <div className="text-6xl mb-4">📋</div>
-                <p className="text-xl font-bold italic">Hozircha navbatda hech kim yo'q</p>
+                <p className="text-xl font-bold italic">
+                  {lang === 'ru' ? 'В очереди пока никого нет' : "Hozircha navbatda hech kim yo'q"}
+                </p>
               </div>
             )}
           </div>
@@ -310,12 +379,15 @@ export function QueueTVDisplay() {
       {/* Footer Ticker */}
       <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center text-white/40 font-bold uppercase tracking-widest">
         <div className="flex gap-12">
-          <p className="flex items-center gap-3"><span className="text-blue-400 text-xl">📍</span> DentalClinic Pro Markazi</p>
+          <p className="flex items-center gap-3">
+            <span className="text-blue-400 text-xl">📍</span> 
+            {lang === 'ru' ? 'Центр DentalClinic Pro' : 'DentalClinic Pro Markazi'}
+          </p>
           <p className="flex items-center gap-3"><span className="text-blue-400 text-xl">📞</span> +998 71 200 00 00</p>
         </div>
         <div className="flex items-center gap-3 bg-blue-500/10 px-6 py-2 rounded-full border border-blue-500/20">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <p className="text-xs text-blue-300">Tizim Online</p>
+          <p className="text-xs text-blue-300">{lang === 'ru' ? 'Система Онлайн' : 'Tizim Online'}</p>
         </div>
       </div>
     </div>

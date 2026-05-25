@@ -1,9 +1,15 @@
 /**
- * Professional Uzbek TTS Module for Queue Announcements
+ * Professional Multi-language TTS Module for Queue Announcements (Uzbek & Russian)
  * 
  * Strategy:
- * 1. Primary: Uses a server-side proxy to Google Translate TTS for natural Uzbek voice
+ * 1. Primary: Uses a server-side proxy to Google Translate TTS for natural voice or browser SpeechSynthesis
  * 2. Fallback: Browser SpeechSynthesis with optimized settings
+ * 
+ * Uzbek Accent Strategy:
+ * Since Google TTS and most browsers lack a native Uzbek voice, we leverage
+ * the close linguistic relationship between Uzbek and Turkish (both Turkic languages).
+ * By transliterating Uzbek text into Turkish phonetic equivalents, the Turkish TTS engine
+ * produces a near-perfect, natural-sounding Uzbek accent.
  */
 
 let audioContext: AudioContext | null = null;
@@ -42,15 +48,105 @@ const numberToUzbekWords = (n: number): string => {
     return result.trim();
 };
 
+/**
+ * Converts cardinal numbers to ordinal words in Uzbek (e.g., 2 -> ikkinchi)
+ * Uzbek ordinal suffix rules:
+ * - After vowels (a, i, o, u, e): drop last vowel, add -nchi/-inchi
+ * - After consonants: add -inchi
+ * Special cases handled individually for accuracy.
+ */
+const numberToUzbekOrdinalWords = (n: number): string => {
+    // Hardcoded ordinals for common numbers to guarantee correctness
+    const ordinals: { [key: number]: string } = {
+        1: "birinchi",
+        2: "ikkinchi",
+        3: "uchinchi",
+        4: "to'rtinchi",
+        5: "beshinchi",
+        6: "oltinchi",
+        7: "yettinchi",
+        8: "sakkizinchi",
+        9: "to'qqizinchi",
+        10: "o'ninchi",
+    };
+
+    if (ordinals[n]) return ordinals[n];
+
+    const cardinal = numberToUzbekWords(n);
+    if (!cardinal) return "";
+
+    // General rule: add -inchi after consonant, -nchi after vowel
+    const lastChar = cardinal[cardinal.length - 1];
+    const vowels = ['a', 'i', 'o', 'u', 'e'];
+
+    if (vowels.includes(lastChar)) {
+        return cardinal + "nchi";
+    }
+    return cardinal + "inchi";
+};
+
+const numberToRussianWords = (n: number): string => {
+    const units = ["", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"];
+    const teens = ["десять", "одиннадцать", "двенадцать", "тринадцать", "четырнадцать", "пятнадцать", "шестнадцать", "семнадцать", "восемнадцать", "девятнадцать"];
+    const tens = ["", "десять", "двадцать", "тридцать", "сорок", "пятьдесят", "шестьдесят", "семьдесят", "восемьдесят", "девяносто"];
+    const hundreds = ["", "сто", "двести", "триста", "четыреста", "пятьсот", "шестьсот", "семьсот", "восемьсот", "девятьсот"];
+
+    if (n === 0) return "ноль";
+    if (n < 0) return "";
+
+    let result = "";
+
+    if (n >= 1000) {
+        const thousands = Math.floor(n / 1000);
+        if (thousands === 1) {
+            result += "тысяча ";
+        } else if (thousands === 2) {
+            result += "две тысячи ";
+        } else if (thousands === 3 || thousands === 4) {
+            result += numberToRussianWords(thousands) + " тысячи ";
+        } else {
+            result += numberToRussianWords(thousands) + " тысяч ";
+        }
+        n %= 1000;
+    }
+
+    if (n >= 100) {
+        result += hundreds[Math.floor(n / 100)] + " ";
+        n %= 100;
+    }
+
+    if (n >= 20) {
+        result += tens[Math.floor(n / 10)] + " ";
+        n %= 10;
+    } else if (n >= 10) {
+        result += teens[n - 10] + " ";
+        n = 0;
+    }
+
+    if (n > 0) {
+        result += units[n] + " ";
+    }
+
+    return result.trim();
+};
+
 const uzSpelling: { [key: string]: string } = {
     'A': 'A', 'B': 'Be', 'C': 'Se', 'D': 'De', 'E': 'E', 'F': 'Ef', 'G': 'Ge', 'H': 'Ha',
     'I': 'I', 'J': 'Je', 'K': 'Ka', 'L': 'El', 'M': 'Em', 'N': 'En', 'O': 'O', 'P': 'Pe',
     'Q': 'Qa', 'R': 'Er', 'S': 'Es', 'T': 'Te', 'U': 'U', 'V': 'Ve', 'X': 'Xa', 'Y': 'Ye', 'Z': 'Ze'
 };
 
+const ruSpelling: { [key: string]: string } = {
+    'A': 'А', 'B': 'Бэ', 'C': 'Цэ', 'D': 'Дэ', 'E': 'Е', 'F': 'Эф', 'G': 'Гэ', 'H': 'Ха',
+    'I': 'И', 'J': 'Же', 'K': 'Ка', 'L': 'Эль', 'M': 'Эм', 'N': 'Эн', 'O': 'О', 'P': 'Пэ',
+    'Q': 'Ку', 'R': 'Эр', 'S': 'Эс', 'T': 'Тэ', 'U': 'У', 'V': 'Вэ', 'W': 'Дабл-ю', 'X': 'Икс',
+    'Y': 'Игрек', 'Z': 'Зет'
+};
+
 /**
  * Process text to make it more natural for TTS:
  * - Convert queue numbers (e.g. A001, K15, A 3) to spoken Uzbek words
+ * - Convert ordinal numbers (e.g. 2-xona -> ikkinchi xona) to correct Uzbek ordinal words
  * - Convert any other standalone numbers (like room numbers) to spoken Uzbek words
  * - Expand abbreviations and fix spellings
  */
@@ -62,10 +158,16 @@ const preprocessText = (text: string): string => {
         const num = parseInt(numStr, 10);
         const numWords = numberToUzbekWords(num);
         const letterSpoken = uzSpelling[letter.toUpperCase()] || letter;
-        return `${letterSpoken} ${numWords}`;
+        return `${letterSpoken}, ${numWords}`;
     });
 
-    // 2. Spell out any remaining standalone numbers (e.g. "2" in "2-xonaga")
+    // 2. Spell out ordinal numbers naturally (e.g., "2-xona" -> "ikkinchi xona")
+    processed = processed.replace(/\b(\d+)-xona/gi, (match, numStr) => {
+        const num = parseInt(numStr, 10);
+        return numberToUzbekOrdinalWords(num) + " xona";
+    });
+
+    // 3. Spell out any remaining standalone numbers
     processed = processed.replace(/\b(\d+)\b/g, (match, numStr) => {
         const num = parseInt(numStr, 10);
         return numberToUzbekWords(num);
@@ -77,10 +179,102 @@ const preprocessText = (text: string): string => {
         .replace(/Dr\./gi, "doktor")
         .replace(/shifokor\s+qabuliga/gi, "shifokor qabuliga");
 
-    // Add natural pauses with commas for clearer announcement
+    return processed;
+};
+
+/**
+ * Preprocess Russian text to make it natural for Russian TTS:
+ * - Convert queue numbers (e.g. A001, K15) to spoken Russian phonetic spelling and words
+ * - Convert any other numbers to Russian words
+ */
+const preprocessRussianText = (text: string): string => {
+    let processed = text;
+
+    // 1. Spell out queue numbers like "A003" or "K 15" naturally anywhere in the text
+    processed = processed.replace(/\b([A-Z])\s*0*([1-9]\d*|0)\b/gi, (match, letter, numStr) => {
+        const num = parseInt(numStr, 10);
+        const numWords = numberToRussianWords(num);
+        const letterSpoken = ruSpelling[letter.toUpperCase()] || letter;
+        return `${letterSpoken} ${numWords}`;
+    });
+
+    // 2. Spell out any remaining standalone numbers
+    processed = processed.replace(/\b(\d+)\b/g, (match, numStr) => {
+        const num = parseInt(numStr, 10);
+        return numberToRussianWords(num);
+    });
+
+    // Expand doctor prefix
     processed = processed
-        .replace(/marhamat,/gi, "marhamat, ,")
-        .replace(/kiring\./gi, "kiring.");
+        .replace(/Dr\./gi, "доктору")
+        .replace(/доктор\s+/gi, "доктору ");
+
+    return processed;
+};
+
+/**
+ * Advanced transliteration from Latin Uzbek to Turkish phonetics for pure Uzbek accent.
+ * 
+ * Turkish and Uzbek share Turkic roots with nearly identical vowel harmony,
+ * agglutinative structure, and prosodic patterns. This comprehensive mapping
+ * ensures the Turkish TTS engine produces authentic Uzbek pronunciation.
+ * 
+ * Key mappings:
+ * - o' (ўзбек ō) → ö (Turkish ö) — the critical Uzbek mid-rounded vowel
+ * - g' (ғ) → ğ (Turkish soft-g) — uvular/velar fricative  
+ * - sh → ş, ch → ç — standard Turkic sibilant mapping
+ * - j → c (Uzbek ж = Turkish c [dʒ])
+ * - q → k (Uzbek uvular q approximated as Turkish k)
+ * - x → h (Uzbek velar x approximated as Turkish h)
+ * - ng → special nasal handling
+ */
+const latinToTurkishPhonetic = (text: string): string => {
+    let processed = text;
+
+    // Word-level replacements for common announcement words to ensure perfect pronunciation
+    const wordMap: { [key: string]: string } = {
+        "hurmatli": "hürmetli",
+        "marhamat": "marhamat",
+        "mijoz": "micöz",
+        "xona": "höna",
+        "xonaga": "hönaga",
+        "doktor": "doktör",
+        "shifokor": "şifökör",
+        "qabuliga": "kabuliga",
+        "kiring": "kiring",
+        "kabinetga": "kabinetga",
+    };
+
+    // Apply word-level replacements (case-insensitive, preserving sentence position)
+    for (const [uzWord, trWord] of Object.entries(wordMap)) {
+        const regex = new RegExp(`\\b${uzWord}\\b`, 'gi');
+        processed = processed.replace(regex, (match) => {
+            // Preserve capitalization of first letter
+            if (match[0] === match[0].toUpperCase()) {
+                return trWord[0].toUpperCase() + trWord.slice(1);
+            }
+            return trWord;
+        });
+    }
+
+    // Multi-character combinations (must come before single character replacements)
+    processed = processed
+        // Tri-graphs first
+        .replace(/ng'/gi, 'ñ')   // ng' combination
+        
+        // Di-graphs
+        .replace(/ch/gi, (m) => m[0] === m[0].toUpperCase() ? 'Ç' : 'ç')
+        .replace(/sh/gi, (m) => m[0] === m[0].toUpperCase() ? 'Ş' : 'ş')
+        .replace(/ng/gi, 'ng')   // Turkish ng is close enough
+        .replace(/o'/gi, 'ö')
+        .replace(/O'/gi, 'Ö')
+        .replace(/g'/gi, 'ğ')
+        .replace(/G'/gi, 'Ğ')
+        
+        // Single characters  
+        .replace(/j/gi, (m) => m === 'J' ? 'C' : 'c')
+        .replace(/q/gi, (m) => m === 'Q' ? 'K' : 'k')
+        .replace(/x/gi, (m) => m === 'X' ? 'H' : 'h');
 
     return processed;
 };
@@ -125,22 +319,34 @@ const getApiBase = (): string => {
     }
 
     // Production/Staging fallback: use current domain/port
-    return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}/api`;
+    return `${protocol}//${resolvedHost}${port ? `:${port}` : ""}`;
 };
 
 /**
  * Play audio using high-quality backend TTS proxy endpoint.
- * The backend proxies requests to deliver professional neural voices without CORS/User-Agent restrictions.
+ * 
+ * CRITICAL for Uzbek: We send Turkish-transliterated text with lang=tr
+ * because Google TTS has no native Uzbek voice. The Turkish voice engine
+ * is the closest match for natural Uzbek pronunciation.
  */
-const playGoogleTTS = async (text: string): Promise<boolean> => {
+const playGoogleTTS = async (text: string, lang: 'uz' | 'ru' = 'uz'): Promise<boolean> => {
     try {
-        const chunks = splitTextIntoChunks(text);
+        // For Uzbek: transliterate to Turkish phonetics and use Turkish voice
+        let ttsText = text;
+        let ttsLang = lang;
+        
+        if (lang === 'uz') {
+            ttsText = latinToTurkishPhonetic(text);
+            ttsLang = 'tr' as any; // Use Turkish voice for natural Uzbek accent
+        }
+
+        const chunks = splitTextIntoChunks(ttsText);
         const apiBase = getApiBase();
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = encodeURIComponent(chunks[i]);
-            // Backend TTS proxy URL for genuine Uzbek voice
-            const url = `${apiBase}/clinic/tts/?text=${chunk}`;
+            // Backend TTS proxy URL — use 'tr' for Uzbek, 'ru' for Russian
+            const url = `${apiBase}/clinic/tts/?text=${chunk}&lang=${ttsLang}`;
 
             await new Promise<void>((resolve, reject) => {
                 // Stop any currently playing audio
@@ -222,9 +428,39 @@ const latinToCyrillic = (text: string): string => {
 };
 
 /**
- * Fallback and Local SpeechSynthesis with Microsoft Madina (HD) priority
+ * Play Uzbek announcement using the native Microsoft Madina (HD) voice.
+ * Madina is a neural uz-UZ voice — no transliteration needed.
+ * We send clean Uzbek Latin text directly.
+ * Returns a Promise that resolves when speech finishes.
  */
-const playBrowserTTS = (text: string): void => {
+const playMadinaTTS = (text: string, voice: SpeechSynthesisVoice): Promise<void> => {
+    return new Promise((resolve) => {
+        if (!window.speechSynthesis) { resolve(); return; }
+
+        window.speechSynthesis.cancel();
+
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.voice = voice;
+        msg.lang = voice.lang || 'uz-UZ';
+
+        // Natural Uzbek accent — normal speed, natural pitch, no artificial tweaks
+        msg.rate = 0.92;
+        msg.pitch = 1.0;
+        msg.volume = 1.0;
+
+        msg.onend = () => resolve();
+        msg.onerror = () => resolve();
+
+        window.speechSynthesis.speak(msg);
+
+        console.log(`🎙️ Madina HD: "${text.substring(0, 80)}..." | rate=${msg.rate} pitch=${msg.pitch}`);
+    });
+};
+
+/**
+ * Fallback Browser SpeechSynthesis (when Madina is not available)
+ */
+const playBrowserTTS = (text: string, lang: 'uz' | 'ru' = 'uz'): void => {
     if (!window.speechSynthesis) return;
 
     // Cancel any ongoing speech
@@ -232,35 +468,34 @@ const playBrowserTTS = (text: string): void => {
 
     const voices = window.speechSynthesis.getVoices();
 
-    // Priority order for voice selection:
-    // 1. Madina (HD) voice (Microsoft Madina Online) - stunning natural Uzbek voice
-    // 2. Uzbek voice (uz-UZ)
-    // 3. Turkish voice (tr-TR) - closest related language
-    // 4. Russian voice (ru-RU) - fallback with phonetic transliteration
-    // 5. Default
-    const madinaVoice = voices.find(v => v.name.toLowerCase().includes('madina'));
-    const uzVoice = voices.find(v => v.lang.startsWith('uz'));
-    const trVoice = voices.find(v => v.lang.startsWith('tr'));
-    const ruVoice = voices.find(v => v.lang.startsWith('ru'));
-
     let speakText = text;
     let selectedVoice: SpeechSynthesisVoice | null = null;
-    let selectedLang = 'tr-TR';
+    let selectedLang = lang === 'uz' ? 'tr-TR' : 'ru-RU';
 
-    if (madinaVoice) {
-        selectedVoice = madinaVoice;
-        selectedLang = madinaVoice.lang;
-    } else if (uzVoice) {
-        selectedVoice = uzVoice;
-        selectedLang = uzVoice.lang;
-    } else if (trVoice) {
-        selectedVoice = trVoice;
-        selectedLang = trVoice.lang;
-    } else if (ruVoice) {
-        // Transliterate to Cyrillic so the Russian voice pronounces Uzbek beautifully
-        selectedVoice = ruVoice;
-        selectedLang = ruVoice.lang;
-        speakText = latinToCyrillic(text);
+    if (lang === 'ru') {
+        const premiumRuVoice = voices.find(v => v.lang.startsWith('ru') && v.name.toLowerCase().includes('google'));
+        const microsoftRuVoice = voices.find(v => v.lang.startsWith('ru') && v.name.toLowerCase().includes('microsoft'));
+        const genericRuVoice = voices.find(v => v.lang.startsWith('ru'));
+        selectedVoice = premiumRuVoice || microsoftRuVoice || genericRuVoice || null;
+        selectedLang = 'ru-RU';
+    } else {
+        // Priority: Uzbek voice > Turkish (with transliteration) > Russian (with Cyrillic)
+        const uzVoice = voices.find(v => v.lang.startsWith('uz'));
+        const trVoice = voices.find(v => v.lang.startsWith('tr'));
+        const ruVoice = voices.find(v => v.lang.startsWith('ru'));
+
+        if (uzVoice) {
+            selectedVoice = uzVoice;
+            selectedLang = uzVoice.lang;
+        } else if (trVoice) {
+            selectedVoice = trVoice;
+            selectedLang = trVoice.lang;
+            speakText = latinToTurkishPhonetic(text);
+        } else if (ruVoice) {
+            selectedVoice = ruVoice;
+            selectedLang = ruVoice.lang;
+            speakText = latinToCyrillic(text);
+        }
     }
 
     const msg = new SpeechSynthesisUtterance(speakText);
@@ -271,7 +506,7 @@ const playBrowserTTS = (text: string): void => {
         msg.lang = selectedLang;
     }
 
-    msg.rate = 0.85;   // Slower for better clarity in clinical setting
+    msg.rate = lang === 'ru' ? 0.9 : 0.85;
     msg.pitch = 1.0;
     msg.volume = 1.0;
 
@@ -279,40 +514,71 @@ const playBrowserTTS = (text: string): void => {
 };
 
 /**
- * Main TTS function: Play an Uzbek voice announcement
- * Tries Microsoft Madina (HD) natively first, then Google TTS backend proxy, then browser fallbacks
+ * Main TTS function: Play a voice announcement (Uzbek or Russian)
  */
-export const playUzbekVoice = async (text: string): Promise<void> => {
+export const playVoice = async (text: string, lang: 'uz' | 'ru' = 'uz'): Promise<void> => {
     if (typeof window === "undefined") return;
 
-    const processedText = preprocessText(text);
+    if (lang === 'ru') {
+        const processedText = preprocessRussianText(text);
 
-    // 1. Try to find the high-quality Microsoft Madina (HD) voice in SpeechSynthesis first.
-    // If it is natively present, use it immediately for zero latency and HD quality!
-    if (window.speechSynthesis) {
-        const voices = window.speechSynthesis.getVoices();
-        const madinaVoice = voices.find(v => v.name.toLowerCase().includes('madina'));
+        // Try local SpeechSynthesis first for Russian as it is extremely high quality on most systems
+        if (window.speechSynthesis) {
+            const voices = window.speechSynthesis.getVoices();
+            const ruVoice = voices.find(v => v.lang.startsWith('ru'));
+            if (ruVoice) {
+                console.log("Found native Russian voice. Using local SpeechSynthesis.");
+                playBrowserTTS(processedText, 'ru');
+                return;
+            }
+        }
 
-        if (madinaVoice) {
-            console.log("Found native Microsoft Madina (HD) voice. Using for local synthesis:", madinaVoice.name);
-            playBrowserTTS(processedText);
-            return;
+        // Fallback to Google TTS proxy with lang=ru
+        const success = await playGoogleTTS(processedText, 'ru');
+        if (!success) {
+            playBrowserTTS(processedText, 'ru');
+        }
+    } else {
+        const processedText = preprocessText(text);
+
+        // === PRIORITY 1: Microsoft Madina (HD) — Native Uzbek Neural Voice ===
+        // This is the BEST option. Madina speaks pure, native Uzbek.
+        // No transliteration needed — just clean o'zbek lotin yozuvi.
+        if (window.speechSynthesis) {
+            const voices = window.speechSynthesis.getVoices();
+            const madinaVoice = voices.find(v => 
+                v.name.toLowerCase().includes('madina') || 
+                (v.lang.startsWith('uz') && v.name.toLowerCase().includes('microsoft'))
+            );
+
+            if (madinaVoice) {
+                console.log("✅ Madina (HD) topildi! Toza o'zbek ovozi ishlatilmoqda:", madinaVoice.name);
+                await playMadinaTTS(processedText, madinaVoice);
+                return;
+            }
+        }
+
+        // === PRIORITY 2: Google TTS with Turkish transliteration ===
+        const success = await playGoogleTTS(processedText, 'uz');
+
+        // === PRIORITY 3: Browser fallback (Turkish or Russian voice) ===
+        if (!success) {
+            playBrowserTTS(processedText, 'uz');
         }
     }
+};
 
-    // 2. Try Google TTS backend proxy next for natural Uzbek pronunciation
-    const success = await playGoogleTTS(processedText);
-
-    // 3. If Google TTS fails, use browser fallback
-    if (!success) {
-        playBrowserTTS(processedText);
-    }
+/**
+ * Legacy wrapper to maintain strict backward compatibility for playUzbekVoice
+ */
+export const playUzbekVoice = async (text: string): Promise<void> => {
+    return playVoice(text, 'uz');
 };
 
 /**
  * Play a "ding" notification sound before the announcement
  */
-export const playAnnouncementWithDing = async (text: string): Promise<void> => {
+export const playAnnouncementWithDing = async (text: string, lang: 'uz' | 'ru' = 'uz'): Promise<void> => {
     if (typeof window === "undefined") return;
 
     try {
@@ -337,12 +603,12 @@ export const playAnnouncementWithDing = async (text: string): Promise<void> => {
 
         // Wait for ding to finish, then speak
         await new Promise(r => setTimeout(r, 800));
-        await playUzbekVoice(text);
+        await playVoice(text, lang);
 
         ctx.close();
     } catch (e) {
         // If ding fails, just speak
-        await playUzbekVoice(text);
+        await playVoice(text, lang);
     }
 };
 
